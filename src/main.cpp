@@ -37,6 +37,13 @@ const byte IN_CC_SUS_DOWN = 32;
 const byte IN_CC_SUS_UP = 33;
 bool noteOn = false;
 
+
+// Modes
+const byte MODE_BROKEN_CABLE = 0;
+const byte MODE_SINE_LFO = 1;
+const byte MODE_RAMP_LFO = 2;
+const byte MODE_VOLUME_CONTROL = 3;
+
 // Track when we last received MIDI data
 unsigned long lastMidiReceiveTime = 0;
 
@@ -146,46 +153,46 @@ void loop()
     if (data == IN_CC_SWITCH_1)
     {
       Serial.println("Switch 1 activated");
-      if (noteOn && activeMode == 0) {
+      if (noteOn && activeMode == MODE_BROKEN_CABLE) {
         noteOn = false;
       } else {
         noteOn = true;
         modeSwitched = true;
       }
-      activeMode = 0;
+      activeMode = MODE_BROKEN_CABLE;
     }
     else if (data == IN_CC_SWITCH_2)
     {
       Serial.println("Switch 2 activated");
-      if (noteOn && activeMode == 1) {
+      if (noteOn && activeMode == MODE_SINE_LFO) {
         noteOn = false;
       } else {
         noteOn = true;
         modeSwitched = true;
       }
-      activeMode = 1;
+      activeMode = MODE_SINE_LFO;
     } 
     else if (data == IN_CC_SWITCH_4)
     {
       Serial.println("Switch 3 activated");
-      if (noteOn && activeMode == 2) {
+      if (noteOn && activeMode == MODE_RAMP_LFO) {
         noteOn = false;
       } else {
         noteOn = true;
         modeSwitched = true;
       }
-      activeMode = 2;
+      activeMode = MODE_RAMP_LFO;
     }
     else if (data == IN_CC_SWITCH_3)
     {
       Serial.println("Switch 4 activated");
-      if (noteOn && activeMode == 3) {
+      if (noteOn && activeMode == MODE_VOLUME_CONTROL) {
         noteOn = false;
       } else {
         noteOn = true;
         modeSwitched = true;
       }
-      activeMode = 3;
+      activeMode = MODE_VOLUME_CONTROL;
     }
     
    if (!noteOn || modeSwitched)
@@ -213,17 +220,17 @@ void loop()
   }
   
   // Handle active modes and other logic
-  if (activeMode == 2) {
+  if (activeMode == MODE_VOLUME_CONTROL) {
     sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, targetVolume);
   }
   if (noteOn)
   {
     lastMidiReceiveTime = millis();
-    if (activeMode == 0)
+    if (activeMode == MODE_BROKEN_CABLE)
     {
       brokenCable();
     }
-    else if (activeMode == 1)
+    else if (activeMode == MODE_SINE_LFO)
     {
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
       if (!lfoActive)
@@ -236,7 +243,7 @@ void loop()
         }
       }
     }
-    else if (activeMode == 3)
+    else if (activeMode == MODE_RAMP_LFO)
     {
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
       
