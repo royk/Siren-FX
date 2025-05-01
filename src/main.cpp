@@ -9,25 +9,37 @@ SoftwareSerial midiSerial(0, 1); // RX, TX
 // LED pin
 const int ledPin = LED_BUILTIN;
 
-const byte CC_A_VOLUME = 29;
-const byte CC_B_VOLUME = 40;
-const byte CC_AB_VOLUME = 69;
+// SIREN CC codes
 
-const byte CC_AB_LFO_SPEED = 70; // 0 - off, 10-127: 100ms to 1.27s
-const byte CC_AB_LFO_SINE = 61;  // 0-127: depth
-const byte CC_B_LFO_DELAY = 51;  // 0-24 (1/24th of a duration)
+const byte OUT_CC_A_VOLUME = 29;
+const byte OUT_CC_B_VOLUME = 40;
+const byte OUT_CC_AB_VOLUME = 69;
 
+const byte OUT_CC_AB_LFO_SPEED = 70; // 0 - off, 10-127: 100ms to 1.27s
+const byte OUT_CC_AB_LFO_SINE = 61;  // 0-127: depth
+const byte OUT_CC_B_LFO_DELAY = 51;  // 0-24 (1/24th of a duration)
+
+byte OUT_CHANNEL = 0; // MIDI channel for LFO output (0-15)
+
+// Hotone CC codes
+const byte IN_CC_SWITCH_1 = 27;
+const byte IN_CC_SWITCH_2 = 28;
+const byte IN_CC_SWITCH_3 = 29;
+const byte IN_CC_SWITCH_4 = 30;
+const byte IN_CC_EXP = 31;
+const byte IN_CC_SUS_DOWN = 32;
+const byte IN_CC_SUS_UP = 33;
 bool noteOn = false;
-
-// LFO settings
-const byte LFO_CC = 20; // 20 is channel A volume
-byte lfoChannel = 0;    // MIDI channel for LFO output (0-15)
 
 // Track when we last received MIDI data
 unsigned long lastMidiReceiveTime = 0;
 
 unsigned int counter = 0;
 byte lastValue = 0;
+
+byte activeMode = 0;
+
+bool lfoActive = false;
 
 unsigned long lastBrokenCableTime = 0;
 unsigned long brokenCableHold = 100;
@@ -49,14 +61,18 @@ void sendMidiCC(byte channel, byte controller, byte value)
 
 void startStereoLFO()
 {
-  sendMidiCC(lfoChannel, CC_AB_LFO_SPEED, 10);
-  sendMidiCC(lfoChannel, CC_AB_LFO_SINE, 127);
-  sendMidiCC(lfoChannel, CC_B_LFO_DELAY, 12);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, 10);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SINE, 127);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_B_LFO_DELAY, 12);
+}
+
+void stopStereoLFO() {
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, 0);
 }
 
 void brokenCable(float dropChance = 0.5)
 {
-  sendMidiCC(lfoChannel, CC_AB_LFO_SPEED, 0);
+  
   unsigned long now = millis();
   if (now - lastBrokenCableTime >= brokenCableHold)
   {
@@ -64,7 +80,7 @@ void brokenCable(float dropChance = 0.5)
     brokenCableHold = random(1, lastValue == 127 ? 300 : 50);
     lastBrokenCableTime = now;
   }
-  sendMidiCC(lfoChannel, CC_AB_VOLUME, lastValue);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, lastValue);
 }
 
 void setup()
@@ -88,101 +104,49 @@ void loop()
   // Check if MIDI data is available
   if (midiSerial.available() > 0)
   {
-    byte statusByte = midiSerial.read();
+    byte data1 = midiSerial.read();
     lastMidiReceiveTime = millis();
 
     // Log what we received
     Serial.print("MIDI status byte: 0x");
-    Serial.println(statusByte, HEX);
-
-    // Note On: 0x9n where n is the channel (0-F)
-    if ((statusByte & 0xF0) == 0x90)
+    Serial.println(data1);
+    if (data1 == IN_CC_SWITCH_1)
     {
-      // Wait for the next two bytes (pitch and velocity)
-      unsigned long waitStart = millis();
-      while (midiSerial.available() < 2)
-      {
-        // Timeout after 100ms
-        if (millis() - waitStart > 100)
-        {
-          Serial.println("Timeout waiting for pitch/velocity");
-          return;
-        }
-      }
-
-      byte pitch = midiSerial.read();
-      byte velocity = midiSerial.read();
-
-      Serial.print("Note On - Pitch: ");
-      Serial.print(pitch);
-      Serial.print(", Velocity: ");
-      Serial.println(velocity);
-
-      // If velocity is 0, it's actually a note off
-      if (velocity > 0)
-      {
-        noteOn = true;
-        digitalWrite(ledPin, HIGH);
-        // Store the channel for LFO output
-        lfoChannel = statusByte & 0x0F;
-      }
-      else
-      {
-        noteOn = false;
-        digitalWrite(ledPin, LOW);
-        Serial.println("LED OFF (velocity 127)");
-      }
+      activeMode = 0;
     }
-
-    // Note Off: 0x8n where n is the channel (0-F)
-    else if ((statusByte & 0xF0) == 0x80)
+    else if (data1 == IN_CC_SWITCH_2)
     {
-      // Wait for the next two bytes (pitch and velocity)
-      unsigned long waitStart = millis();
-      while (midiSerial.available() < 2)
-      {
-        // Timeout after 100ms
-        if (millis() - waitStart > 100)
-        {
-          Serial.println("Timeout waiting for pitch/velocity");
-          return;
-        }
-      }
-
-      byte pitch = midiSerial.read();
-      byte velocity = midiSerial.read();
-
-      Serial.print("Note Off - Pitch: ");
-      Serial.print(pitch);
-      Serial.print(", Velocity: ");
-      Serial.println(velocity);
-
+      activeMode = 1;
+    }
+    else if (data1 == IN_CC_SUS_DOWN)
+    {
+      noteOn = true;
+      digitalWrite(ledPin, HIGH);
+    }
+    else if (data1 == IN_CC_SUS_UP)
+    {
       noteOn = false;
       digitalWrite(ledPin, LOW);
-      Serial.println("LED OFF");
-    }
-    else
-    {
-      // Handle other MIDI messages
-      Serial.print("Other MIDI message: 0x");
-      Serial.println(statusByte, HEX);
+      stopStereoLFO();
+      sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
+      lfoActive = false;
     }
   }
-  else
-  {
-    // Print a dot every 3 seconds to show the program is running
-    static unsigned long lastDotTime = 0;
-    if (millis() - lastDotTime > 3000)
-    {
-      lastDotTime = millis();
-      Serial.println(".");
-    }
-  }
-
   if (noteOn)
   {
     lastMidiReceiveTime = millis();
-    brokenCable();
+    if (activeMode == 0)
+    {
+      brokenCable();
+    }
+    else if (activeMode == 1)
+    {
+      if (!lfoActive)
+      {
+        startStereoLFO();
+        lfoActive = true;
+      }
+    }
   }
   else
   {
