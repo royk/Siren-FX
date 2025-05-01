@@ -43,7 +43,7 @@ unsigned long lastMidiReceiveTime = 0;
 unsigned int counter = 0;
 
 
-byte lastValue = 0;
+boolean brokenCableState = false;
 
 byte activeMode = 0;
 
@@ -52,7 +52,6 @@ byte lastVolume = 127;
 
 bool lfoActive = false;
 
-unsigned long lastBrokenCableTime = 0;
 unsigned long brokenCableHold = 100;
 
 // Function to send MIDI Control Change message
@@ -90,14 +89,15 @@ void stopLFOs() {
 void brokenCable(float dropChance = 0.7)
 {
   
-  unsigned long now = millis();
-  if (now - lastBrokenCableTime >= brokenCableHold)
+  if (brokenCableHold == 0)
   {
-    lastValue = random(1000) >= (dropChance * 1000) ? targetVolume : 0;
-    brokenCableHold = random(1, lastValue == targetVolume ? 150 : 30);
-    lastBrokenCableTime = now;
+    brokenCableState = !brokenCableState;
+    brokenCableHold = random(1, brokenCableState ? 300 : 10);
+    Serial.print("Broken cable hold: ");
+    Serial.println(brokenCableHold);
   }
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, lastValue);
+  brokenCableHold--;
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, brokenCableState ? targetVolume : 0);
 }
 
 // Function to map one range to another
