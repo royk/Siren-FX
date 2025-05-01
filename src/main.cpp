@@ -25,6 +25,9 @@ const byte OUT_CC_AB_LFO_SINE = 61;  // 0-127: depth
 const byte OUT_CC_AB_LFO_RAMP = 65;
 const byte OUT_CC_B_LFO_DELAY = 51; // 0-24 (1/24th of a duration)
 
+const byte LFO_MIN_SPEED = 10;
+const byte LFO_MAX_SPEED = 127;
+
 byte OUT_CHANNEL = 0; // MIDI channel for LFO output (0-15)
 
 // Hotone CC codes
@@ -245,7 +248,7 @@ void loop()
       {
         if (lastVolume != targetVolume)
         {
-          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, 10, 127));
+          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, LFO_MIN_SPEED, LFO_MAX_SPEED));
         }
       }
     }
@@ -261,7 +264,7 @@ void loop()
       {
         if (lastVolume != targetVolume)
         {
-          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, 10, 127));
+          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, LFO_MIN_SPEED, LFO_MAX_SPEED));
         }
       }
     }
