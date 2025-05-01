@@ -23,7 +23,7 @@ const byte OUT_CC_AB_VOLUME = 69;
 const byte OUT_CC_AB_LFO_SPEED = 70; // 0 - off, 10-127: 100ms to 1.27s
 const byte OUT_CC_AB_LFO_SINE = 61;  // 0-127: depth
 const byte OUT_CC_AB_LFO_RAMP = 65;
-const byte OUT_CC_B_LFO_DELAY = 51;  // 0-24 (1/24th of a duration)
+const byte OUT_CC_B_LFO_DELAY = 51; // 0-24 (1/24th of a duration)
 
 byte OUT_CHANNEL = 0; // MIDI channel for LFO output (0-15)
 
@@ -33,10 +33,7 @@ const byte IN_CC_SWITCH_2 = 28;
 const byte IN_CC_SWITCH_3 = 29;
 const byte IN_CC_SWITCH_4 = 30;
 const byte IN_CC_EXP = 31;
-const byte IN_CC_SUS_DOWN = 32;
-const byte IN_CC_SUS_UP = 33;
 bool noteOn = false;
-
 
 // Modes
 const byte MODE_BROKEN_CABLE = 0;
@@ -45,7 +42,6 @@ const byte MODE_RAMP_LFO = 2;
 const byte MODE_VOLUME_CONTROL = 3;
 
 unsigned int counter = 0;
-
 
 boolean brokenCableState = false;
 
@@ -81,13 +77,15 @@ void startSineLFO()
   lfoActive = true;
 }
 
-void startRampLFO() {
+void startRampLFO()
+{
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, targetVolume);
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 127);
   lfoActive = true;
 }
 
-void stopLFOs() {
+void stopLFOs()
+{
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, 0);
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 0);
   lfoActive = false;
@@ -95,7 +93,7 @@ void stopLFOs() {
 
 void brokenCable(float dropChance = 0.7)
 {
-  
+
   if (brokenCableHold == 0)
   {
     brokenCableState = !brokenCableState;
@@ -108,7 +106,8 @@ void brokenCable(float dropChance = 0.7)
 }
 
 // Function to map one range to another
-long mapRange(long x, long in_min, long in_max, long out_min, long out_max) {
+long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
+{
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
@@ -131,13 +130,28 @@ void setup()
   Serial.println("Waiting for MIDI data...");
 }
 
+bool checkModeSwitch(byte mode)
+{
+  bool modeSwitched = false;
+  if (noteOn && activeMode == mode)
+  {
+    noteOn = false;
+  }
+  else
+  {
+    noteOn = true;
+    modeSwitched = true;
+  }
+  return modeSwitched;
+}
+
 void loop()
 {
   // Check if MIDI data is available
   if (midiSerial.available() > 0)
   {
     byte data = midiSerial.read();
-    
+
     // Log the raw data
     Serial.print("MIDI data: ");
     Serial.print(data);
@@ -145,70 +159,58 @@ void loop()
     Serial.print(data, HEX);
     Serial.println(")");
 
-
     bool modeSwitched = false;
-    
+
     // Handle each control based on the direct byte value
     if (data == IN_CC_SWITCH_1)
     {
       Serial.println("Switch 1 activated");
-      if (noteOn && activeMode == MODE_BROKEN_CABLE) {
-        noteOn = false;
-      } else {
-        noteOn = true;
-        modeSwitched = true;
-      }
+      modeSwitched = checkModeSwitch(MODE_BROKEN_CABLE);
       activeMode = MODE_BROKEN_CABLE;
     }
     else if (data == IN_CC_SWITCH_2)
     {
       Serial.println("Switch 2 activated");
-      if (noteOn && activeMode == MODE_SINE_LFO) {
-        noteOn = false;
-      } else {
-        noteOn = true;
-        modeSwitched = true;
-      }
+      modeSwitched = checkModeSwitch(MODE_SINE_LFO);
       activeMode = MODE_SINE_LFO;
-    } 
-    else if (data == IN_CC_SWITCH_4)
-    {
-      Serial.println("Switch 3 activated");
-      if (noteOn && activeMode == MODE_RAMP_LFO) {
-        noteOn = false;
-      } else {
-        noteOn = true;
-        modeSwitched = true;
-      }
-      activeMode = MODE_RAMP_LFO;
     }
     else if (data == IN_CC_SWITCH_3)
     {
+      Serial.println("Switch 3 activated");
+      modeSwitched = checkModeSwitch(MODE_RAMP_LFO);
+      activeMode = MODE_RAMP_LFO;
+    }
+    else if (data == IN_CC_SWITCH_4)
+    {
       Serial.println("Switch 4 activated");
-      if (noteOn && activeMode == MODE_VOLUME_CONTROL) {
-        noteOn = false;
-      } else {
-        noteOn = true;
-        modeSwitched = true;
-      }
+      modeSwitched = checkModeSwitch(MODE_VOLUME_CONTROL);
       activeMode = MODE_VOLUME_CONTROL;
     }
-    
-   if (!noteOn || modeSwitched)
+
+    if (!noteOn || modeSwitched)
     {
-      Serial.println("Sustain released");
+      if (!noteOn)
+      {
+        Serial.println("Mode stopped");
+      }
+      else
+      {
+        Serial.println("Mode switched");
+      }
       digitalWrite(ledPin, LOW);
       stopLFOs();
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
     }
     // Check for expression pedal - seems to work differently, might need a delay
-    if (data == IN_CC_EXP) {
+    if (data == IN_CC_EXP)
+    {
       // Wait for the value byte to be available
       delay(5); // Short delay to ensure the next byte arrives
-      if (midiSerial.available() > 0) {
+      if (midiSerial.available() > 0)
+      {
         byte value = midiSerial.read();
         // Map from pedal range (31-127) to full MIDI range (0-127)
-        targetVolume = 127- mapRange(value, 31, 127, 0, 127);
+        targetVolume = 127 - mapRange(value, 31, 127, 0, 127);
         Serial.print("Expression pedal value: ");
         Serial.println(targetVolume);
         Serial.print("Raw value: ");
@@ -216,9 +218,10 @@ void loop()
       }
     }
   }
-  
+
   // Handle active modes and other logic
-  if (activeMode == MODE_VOLUME_CONTROL) {
+  if (activeMode == MODE_VOLUME_CONTROL)
+  {
     sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, targetVolume);
   }
   if (noteOn)
@@ -233,8 +236,11 @@ void loop()
       if (!lfoActive)
       {
         startSineLFO();
-      }  else {
-        if (lastVolume != targetVolume) {
+      }
+      else
+      {
+        if (lastVolume != targetVolume)
+        {
           sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, 10, 127));
         }
       }
@@ -242,12 +248,15 @@ void loop()
     else if (activeMode == MODE_RAMP_LFO)
     {
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
-      
+
       if (!lfoActive)
       {
         startRampLFO();
-      } else {
-        if (lastVolume != targetVolume) {
+      }
+      else
+      {
+        if (lastVolume != targetVolume)
+        {
           sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, 10, 127));
         }
       }
