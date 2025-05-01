@@ -192,14 +192,18 @@ void loop()
       if (!noteOn)
       {
         Serial.println("Mode stopped");
+        digitalWrite(ledPin, LOW);
       }
       else
       {
         Serial.println("Mode switched");
       }
-      digitalWrite(ledPin, LOW);
       stopLFOs();
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
+    }
+    if (noteOn)
+    {
+      digitalWrite(ledPin, HIGH);
     }
     // Check for expression pedal - seems to work differently, might need a delay
     if (data == IN_CC_EXP)
