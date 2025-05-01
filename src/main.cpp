@@ -44,9 +44,6 @@ const byte MODE_SINE_LFO = 1;
 const byte MODE_RAMP_LFO = 2;
 const byte MODE_VOLUME_CONTROL = 3;
 
-// Track when we last received MIDI data
-unsigned long lastMidiReceiveTime = 0;
-
 unsigned int counter = 0;
 
 
@@ -137,7 +134,6 @@ void loop()
   if (midiSerial.available() > 0)
   {
     byte data = midiSerial.read();
-    lastMidiReceiveTime = millis();
     
     // Log the raw data
     Serial.print("MIDI data: ");
@@ -225,7 +221,6 @@ void loop()
   }
   if (noteOn)
   {
-    lastMidiReceiveTime = millis();
     if (activeMode == MODE_BROKEN_CABLE)
     {
       brokenCable();
@@ -258,20 +253,5 @@ void loop()
       }
     }
     lastVolume = targetVolume;
-  }
-  else
-  {
-    // sendMidiCC(lfoChannel, 70, 0);
-    // Blink LED every second if no MIDI data received recently
-    if (millis() - lastMidiReceiveTime > 5000)
-    {
-      static unsigned long lastBlinkTime = 0;
-      if (millis() - lastBlinkTime > 1000)
-      {
-        lastBlinkTime = millis();
-        digitalWrite(ledPin, !digitalRead(ledPin));
-        // Serial.println("Blink - waiting for MIDI");
-      }
-    }
   }
 }
