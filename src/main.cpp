@@ -78,16 +78,19 @@ void startSineLFO()
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, targetVolume);
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SINE, 127);
   sendMidiCC(OUT_CHANNEL, OUT_CC_B_LFO_DELAY, 12);
+  lfoActive = true;
 }
 
 void startRampLFO() {
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, targetVolume);
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 127);
+  lfoActive = true;
 }
 
 void stopLFOs() {
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, 0);
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 0);
+  lfoActive = false;
 }
 
 void brokenCable(float dropChance = 0.7)
@@ -197,7 +200,6 @@ void loop()
       digitalWrite(ledPin, LOW);
       stopLFOs();
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
-      lfoActive = false;
     }
     // Check for expression pedal - seems to work differently, might need a delay
     if (data == IN_CC_EXP) {
@@ -231,7 +233,6 @@ void loop()
       if (!lfoActive)
       {
         startSineLFO();
-        lfoActive = true;
       }  else {
         if (lastVolume != targetVolume) {
           sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, 10, 127));
@@ -245,7 +246,6 @@ void loop()
       if (!lfoActive)
       {
         startRampLFO();
-        lfoActive = true;
       } else {
         if (lastVolume != targetVolume) {
           sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, 10, 127));
