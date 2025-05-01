@@ -57,6 +57,12 @@ bool lfoActive = false;
 
 unsigned long brokenCableHold = 100;
 
+// Function to map one range to another
+long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 // Function to send MIDI Control Change message
 void sendMidiCC(byte channel, byte controller, byte value)
 {
@@ -72,9 +78,14 @@ void sendMidiCC(byte channel, byte controller, byte value)
   // Serial.println(value);
 }
 
+long mapExpToLFOSpeed(byte expValue)
+{
+  return mapRange(expValue, 0, 127, LFO_MIN_SPEED, LFO_MAX_SPEED);
+}
+
 void startSineLFO()
 {
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, targetVolume);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SINE, 127);
   sendMidiCC(OUT_CHANNEL, OUT_CC_B_LFO_DELAY, 12);
   lfoActive = true;
@@ -82,7 +93,7 @@ void startSineLFO()
 
 void startRampLFO()
 {
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, targetVolume);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 127);
   lfoActive = true;
 }
@@ -108,11 +119,7 @@ void brokenCable(float dropChance = 0.7)
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, brokenCableState ? targetVolume : 0);
 }
 
-// Function to map one range to another
-long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
-{
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
+
 
 void setup()
 {
@@ -237,34 +244,25 @@ void loop()
     {
       brokenCable();
     }
-    else if (activeMode == MODE_SINE_LFO)
+    else if (activeMode == MODE_SINE_LFO || activeMode == MODE_RAMP_LFO)
     {
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
       if (!lfoActive)
       {
-        startSineLFO();
-      }
-      else
-      {
-        if (lastVolume != targetVolume)
+        if (activeMode == MODE_SINE_LFO)
         {
-          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, LFO_MIN_SPEED, LFO_MAX_SPEED));
+          startSineLFO();
+        }
+        else
+        {
+          startRampLFO();
         }
       }
-    }
-    else if (activeMode == MODE_RAMP_LFO)
-    {
-      sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
-
-      if (!lfoActive)
-      {
-        startRampLFO();
-      }
       else
       {
         if (lastVolume != targetVolume)
         {
-          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapRange(targetVolume, 0, 127, LFO_MIN_SPEED, LFO_MAX_SPEED));
+          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
         }
       }
     }
