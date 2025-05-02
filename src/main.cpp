@@ -1,7 +1,7 @@
-// SWITCH 1: Broken Cable
-// SWITCH 2: A/B control (expression pedal changes balance between A and B)
-// SWITCH 3: Stereo Ramp LFO
-// SWITCH 4: Volume control
+// SWITCH 1: Broken Cable. Exp = rate of brokenness
+// SWITCH 2: A/B control. Exp = balance between A and B
+// SWITCH 3: Stereo Ramp LFO. Exp = speed of LFO
+// SWITCH 4: Volume control. Exp = volume
 
 #include <Arduino.h>
 #include <SoftwareSerial.h>
@@ -117,9 +117,9 @@ int currentVolume = 0;         // last sent CC value
 
 // hold values in frames
 const int onMinHold = 10;  //
-const int onMaxHold = 600000; //
+const int onMaxHold = 60000; //
 const int offMinHold = 10;  //
-const int offMaxHold = 80000; //
+const int offMaxHold = 8000; //
 
 //  —————————————————————————————
 //  Smoothly ramp CC from start→end over durationMs
@@ -143,7 +143,7 @@ void fadeTo(byte outCC, int start, int end, int durationMs)
 //  —————————————————————————————
 //  Call this *every* loop to drive the stutter
 //  —————————————————————————————
-void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC)
+void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC, String cableName)
 {
   // countdown until next toggle
   if (--holdTime <= 0)
@@ -159,13 +159,13 @@ void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC)
       randomBias = randomBias * randomBias; // Square it to make small values more likely
       
       // Apply the bias to the range
-      int range = onMaxHold - onMinHold;
+      int range = (onMaxHold - onMinHold) / (targetVolume+1);
       holdTime = onMinHold + (int)(randomBias * range);
-      Serial.print("Broken cable hold ON: ");
+      Serial.print("Broken " + cableName + " hold ON: ");
       Serial.println(holdTime);
       // choose a slightly random on-level (40–100% of target)
-      int minVol = targetVolume * 0.4;
-      int maxVol = targetVolume;
+      int minVol = 0;
+      int maxVol = 127;
       int newVol = random(minVol, maxVol + 1);
       // fade in over ~50ms
       fadeTo(outputCC, currentVolume, newVol, 50);
@@ -177,10 +177,10 @@ void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC)
       // Also apply nonlinear distribution to OFF state
       float randomBias = random(0, 10000) / 10000.0;
       randomBias = randomBias * randomBias;
-      int range = offMaxHold - offMinHold;
+      int range = (offMaxHold - offMinHold) / (targetVolume+1);
       holdTime = offMinHold + (int)(randomBias * range);
       
-      Serial.print("Broken cable hold OFF: ");
+      Serial.print("Broken " + cableName + " hold OFF: ");
       Serial.println(holdTime);
       // quick fade‐out over ~20ms
       fadeTo(outputCC, currentVolume, 0, 20);
@@ -191,12 +191,12 @@ void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC)
 
 void brokenCableA()
 {
-  brokenCable(brokenCableHold_A, brokenCableState_A, OUT_CC_A_VOLUME);
+  brokenCable(brokenCableHold_A, brokenCableState_A, OUT_CC_A_VOLUME, "A");
 }
 
 void brokenCableB()
 {
-  brokenCable(brokenCableHold_B, brokenCableState_B, OUT_CC_B_VOLUME);
+  brokenCable(brokenCableHold_B, brokenCableState_B, OUT_CC_B_VOLUME, "B");
 }
 
 void setup()
