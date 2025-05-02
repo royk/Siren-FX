@@ -1,6 +1,6 @@
 // SWITCH 1: Broken Cable
 // SWITCH 2: Sine LFO
-// SWITCH 3: Ramp LFO
+// SWITCH 3: Stereo Ramp LFO
 // SWITCH 4: Volume control
 
 #include <Arduino.h>
@@ -95,6 +95,7 @@ void startRampLFO()
 {
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 127);
+  sendMidiCC(OUT_CHANNEL, OUT_CC_B_LFO_DELAY, 12);
   lfoActive = true;
 }
 
