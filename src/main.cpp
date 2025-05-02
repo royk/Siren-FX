@@ -57,8 +57,17 @@ bool lfoActive = false;
 
 unsigned long brokenCableHold_A = 100;
 unsigned long brokenCableHold_B = 100;
-boolean brokenCableState_A = false;
-boolean brokenCableState_B = false;
+
+const byte brokenCableState_OFF = 0;
+const byte brokenCableState_ON = 1;
+const byte brokenCableState_BURST_ON = 2;
+const byte brokenCableState_BURST_OFF = 3;
+
+byte brokenCableState_A = brokenCableState_OFF;
+byte brokenCableState_B = brokenCableState_OFF;
+
+byte burstCount_A = 0;
+byte burstCount_B = 0;
 
 // Function to map one range to another
 long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
@@ -117,9 +126,10 @@ int currentVolume = 0;         // last sent CC value
 
 // hold values in frames
 const int onMinHold = 10;  //
-const int onMaxHold = 60000; //
-const int offMinHold = 10;  //
-const int offMaxHold = 8000; //
+const int onMaxHold = 6000; //
+const int offMinHold = 1;  //
+const int offMaxHold = 800; //
+const int maxBurst = 20;
 
 //  —————————————————————————————
 //  Smoothly ramp CC from start→end over durationMs
@@ -143,40 +153,53 @@ void fadeTo(byte outCC, int start, int end, int durationMs)
 //  —————————————————————————————
 //  Call this *every* loop to drive the stutter
 //  —————————————————————————————
-void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC, String cableName)
+void brokenCable(unsigned long &holdTime, byte &cableState, byte &burstCount, byte outputCC, String cableName)
 {
   // countdown until next toggle
-  if (--holdTime <= 0)
+  if (holdTime == 0)
   {
-    cableState = !cableState;
+    
+    if (burstCount > 0) {
+      if (cableState == brokenCableState_BURST_OFF) {
+        cableState = brokenCableState_BURST_ON;
+      } else {
+        cableState = brokenCableState_BURST_OFF;
+      }
+      burstCount--;
+    } else {
+      // Randomly choose between normal ON/OFF (70%) or BURST mode (30%)
+      byte nextState = (random(0, 10) < 3) ? brokenCableState_BURST_ON : brokenCableState_ON;
+      cableState = nextState;
+      
+      if (nextState == brokenCableState_BURST_ON) {
+        burstCount = random(3, maxBurst + 1);
+        holdTime = 5; // Very short hold for first burst transition
+        return;
+      }
+    }
 
-    if (cableState)
+    if (cableState == brokenCableState_ON)
     {
       // → entering "ON" state
       // Generate a value from 0.0 to 1.0, square it to bias toward smaller values
       // This makes small values much more likely than large ones
       float randomBias = random(0, 10000) / 10000.0;
-      randomBias = randomBias * randomBias; // Square it to make small values more likely
+      randomBias = randomBias * randomBias * randomBias; // Square it to make small values more likely
       
       // Apply the bias to the range
       int range = (onMaxHold - onMinHold) / (targetVolume+1);
       holdTime = onMinHold + (int)(randomBias * range);
-      Serial.print("Broken " + cableName + " hold ON: ");
-      Serial.println(holdTime);
+      
       // choose a slightly random on-level (40–100% of target)
-      int minVol = 0;
-      int maxVol = 127;
-      int newVol = random(minVol, maxVol + 1);
       // fade in over ~50ms
-      fadeTo(outputCC, currentVolume, newVol, 50);
-      currentVolume = newVol;
+      fadeTo(outputCC, currentVolume, 127, 50);
     }
-    else
+    if (cableState == brokenCableState_OFF)
     {
       // → entering "OFF" state
       // Also apply nonlinear distribution to OFF state
       float randomBias = random(0, 10000) / 10000.0;
-      randomBias = randomBias * randomBias;
+      randomBias = randomBias * randomBias * randomBias;
       int range = (offMaxHold - offMinHold) / (targetVolume+1);
       holdTime = offMinHold + (int)(randomBias * range);
       
@@ -186,17 +209,36 @@ void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC, St
       fadeTo(outputCC, currentVolume, 0, 20);
       currentVolume = 0;
     }
+    else 
+    {
+      holdTime = random(10, 100); // Ensure we never get holdTime=0 which would cause instant retrigger
+      if (cableState == brokenCableState_BURST_ON) {
+        // Burst ON state - send full volume
+        fadeTo(outputCC, currentVolume, 127, 20);
+        currentVolume = 127;
+      } else {
+        // Burst OFF state - send zero volume
+        fadeTo(outputCC, currentVolume, 0, 20);
+        currentVolume = 0;
+      }
+    }
+  } else {
+    if (holdTime > onMaxHold) {
+      holdTime = 0;
+    } else {
+      holdTime--;
+    }
   }
 }
 
 void brokenCableA()
 {
-  brokenCable(brokenCableHold_A, brokenCableState_A, OUT_CC_A_VOLUME, "A");
+  brokenCable(brokenCableHold_A, brokenCableState_A, burstCount_A, OUT_CC_A_VOLUME, "A");
 }
 
 void brokenCableB()
 {
-  brokenCable(brokenCableHold_B, brokenCableState_B, OUT_CC_B_VOLUME, "B");
+  brokenCable(brokenCableHold_B, brokenCableState_B, burstCount_B, OUT_CC_B_VOLUME, "B");
 }
 
 void setup()
@@ -274,7 +316,8 @@ void loop()
       modeSwitched = checkModeSwitch(MODE_VOLUME_CONTROL);
       activeMode = MODE_VOLUME_CONTROL;
     }
-
+    Serial.println("Note on: " + String(noteOn));
+    Serial.println("Mode switched: " + String(modeSwitched));
     if (!noteOn || modeSwitched)
     {
       if (!noteOn)
@@ -288,6 +331,8 @@ void loop()
       }
       stopLFOs();
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
+      brokenCableHold_A =0;
+      brokenCableHold_B = 0;
     }
     if (noteOn)
     {
@@ -305,8 +350,6 @@ void loop()
         targetVolume = 127 - mapRange(value, 31, 127, 0, 127);
         Serial.print("Expression pedal value: ");
         Serial.println(targetVolume);
-        Serial.print("Raw value: ");
-        Serial.println(value);
       }
     }
   }
@@ -322,6 +365,9 @@ void loop()
     {
       sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, targetVolume);
       // 121 - due to the way the pedal is limited
+      if (targetVolume > 121) {
+        targetVolume = 121;
+      }
       sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 121 - targetVolume);
     }
     if (activeMode == MODE_BROKEN_CABLE)
@@ -341,9 +387,10 @@ void loop()
         if (lastVolume != targetVolume)
         {
           sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
+          lastVolume = targetVolume;
         }
       }
     }
-    lastVolume = targetVolume;
+    
   }
 }
