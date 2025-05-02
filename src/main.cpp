@@ -1,5 +1,5 @@
 // SWITCH 1: Broken Cable
-// SWITCH 2: Sine LFO
+// SWITCH 2: A/B control (expression pedal changes balance between A and B)
 // SWITCH 3: Stereo Ramp LFO
 // SWITCH 4: Volume control
 
@@ -40,7 +40,7 @@ bool noteOn = false;
 
 // Modes
 const byte MODE_BROKEN_CABLE = 0;
-const byte MODE_SINE_LFO = 1;
+const byte MODE_AB_CONTROL = 1;
 const byte MODE_RAMP_LFO = 2;
 const byte MODE_VOLUME_CONTROL = 3;
 
@@ -182,8 +182,8 @@ void loop()
     else if (data == IN_CC_SWITCH_2)
     {
       Serial.println("Switch 2 activated");
-      modeSwitched = checkModeSwitch(MODE_SINE_LFO);
-      activeMode = MODE_SINE_LFO;
+      modeSwitched = checkModeSwitch(MODE_AB_CONTROL);
+      activeMode = MODE_AB_CONTROL;
     }
     else if (data == IN_CC_SWITCH_3)
     {
@@ -241,23 +241,21 @@ void loop()
   }
   if (noteOn)
   {
+    if (activeMode == MODE_AB_CONTROL) {
+      sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, targetVolume);
+      // 121 - due to the way the pedal is limited
+      sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 121-targetVolume);
+    }
     if (activeMode == MODE_BROKEN_CABLE)
     {
       brokenCable();
     }
-    else if (activeMode == MODE_SINE_LFO || activeMode == MODE_RAMP_LFO)
+    else if (activeMode == MODE_RAMP_LFO)
     {
       sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
       if (!lfoActive)
       {
-        if (activeMode == MODE_SINE_LFO)
-        {
-          startSineLFO();
-        }
-        else
-        {
-          startRampLFO();
-        }
+        startRampLFO();
       }
       else
       {
