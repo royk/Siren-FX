@@ -46,7 +46,7 @@ const byte MODE_VOLUME_CONTROL = 3;
 
 unsigned int counter = 0;
 
-boolean brokenCableState = false;
+
 
 byte activeMode = 0;
 
@@ -55,7 +55,10 @@ byte lastVolume = 127;
 
 bool lfoActive = false;
 
-unsigned long brokenCableHold = 100;
+unsigned long brokenCableHold_A = 100;
+unsigned long brokenCableHold_B = 100;
+boolean brokenCableState_A = false;
+boolean brokenCableState_B = false;
 
 // Function to map one range to another
 long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
@@ -121,7 +124,7 @@ const int offMaxHold = 80000; //
 //  —————————————————————————————
 //  Smoothly ramp CC from start→end over durationMs
 //  —————————————————————————————
-void fadeTo(int start, int end, int durationMs)
+void fadeTo(byte outCC, int start, int end, int durationMs)
 {
   // int steps = abs(end - start);
   // if (steps == 0)
@@ -134,20 +137,20 @@ void fadeTo(int start, int end, int durationMs)
   //   delay(delayPerStep);
   // }
   // sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, end);
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, end);
+  sendMidiCC(OUT_CHANNEL, outCC, end);
 }
 
 //  —————————————————————————————
 //  Call this *every* loop to drive the stutter
 //  —————————————————————————————
-void brokenCable()
+void brokenCable(unsigned long &holdTime, boolean &cableState, byte outputCC)
 {
   // countdown until next toggle
-  if (--brokenCableHold <= 0)
+  if (--holdTime <= 0)
   {
-    brokenCableState = !brokenCableState;
+    cableState = !cableState;
 
-    if (brokenCableState)
+    if (cableState)
     {
       // → entering "ON" state
       // Generate a value from 0.0 to 1.0, square it to bias toward smaller values
@@ -156,16 +159,16 @@ void brokenCable()
       randomBias = randomBias * randomBias; // Square it to make small values more likely
       
       // Apply the bias to the range
-      int range = onMaxHold  - onMinHold;
-      brokenCableHold = onMinHold + (int)(randomBias * range);
+      int range = onMaxHold - onMinHold;
+      holdTime = onMinHold + (int)(randomBias * range);
       Serial.print("Broken cable hold ON: ");
-      Serial.println(brokenCableHold);
+      Serial.println(holdTime);
       // choose a slightly random on-level (40–100% of target)
       int minVol = targetVolume * 0.4;
       int maxVol = targetVolume;
       int newVol = random(minVol, maxVol + 1);
       // fade in over ~50ms
-      fadeTo(currentVolume, newVol, 50);
+      fadeTo(outputCC, currentVolume, newVol, 50);
       currentVolume = newVol;
     }
     else
@@ -175,15 +178,25 @@ void brokenCable()
       float randomBias = random(0, 10000) / 10000.0;
       randomBias = randomBias * randomBias;
       int range = offMaxHold - offMinHold;
-      brokenCableHold = offMinHold + (int)(randomBias * range);
+      holdTime = offMinHold + (int)(randomBias * range);
       
       Serial.print("Broken cable hold OFF: ");
-      Serial.println(brokenCableHold);
+      Serial.println(holdTime);
       // quick fade‐out over ~20ms
-      fadeTo(currentVolume, 0, 20);
+      fadeTo(outputCC, currentVolume, 0, 20);
       currentVolume = 0;
     }
   }
+}
+
+void brokenCableA()
+{
+  brokenCable(brokenCableHold_A, brokenCableState_A, OUT_CC_A_VOLUME);
+}
+
+void brokenCableB()
+{
+  brokenCable(brokenCableHold_B, brokenCableState_B, OUT_CC_B_VOLUME);
 }
 
 void setup()
@@ -313,7 +326,8 @@ void loop()
     }
     if (activeMode == MODE_BROKEN_CABLE)
     {
-      brokenCable();
+      brokenCableA();
+      brokenCableB();
     }
     else if (activeMode == MODE_RAMP_LFO)
     {
