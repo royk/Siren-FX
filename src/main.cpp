@@ -1,7 +1,9 @@
-// SWITCH 1: Broken Cable. Exp = rate of brokenness
-// SWITCH 2: A/B control. Exp = balance between A and B
-// SWITCH 3: Stereo Ramp LFO. Exp = speed of LFO
-// SWITCH 4: Volume control. Exp = volume
+// AB control
+
+// DEFAULT: AB on Volume control. Exp = volume
+// SWITCH 1: A on, B off
+// SWITCH 2: B on, A off,
+// SWITCH 3: Broken cable (mono). Exp = rate of brokenness
 
 #include <Arduino.h>
 #include <SoftwareSerial.h>
@@ -30,13 +32,22 @@ const byte LFO_MAX_SPEED = 127;
 
 byte OUT_CHANNEL = 0; // MIDI channel for LFO output (0-15)
 
-// Hotone CC codes
+// In CC codes
+const byte IN_STATUS_BYTE = 176;
 const byte IN_CC_SWITCH_1 = 27;
 const byte IN_CC_SWITCH_2 = 28;
 const byte IN_CC_SWITCH_3 = 29;
 const byte IN_CC_SWITCH_4 = 30;
 const byte IN_CC_EXP = 31;
 bool noteOn = false;
+
+const byte BYTE_STATUS = 0;
+const byte BYTE_CC = 1;
+const byte BYTE_VALUE = 2;
+
+byte nextExpectedByte = BYTE_STATUS;
+
+byte currentCC = 0;
 
 // Modes
 const byte MODE_BROKEN_CABLE = 0;
@@ -45,8 +56,6 @@ const byte MODE_RAMP_LFO = 2;
 const byte MODE_VOLUME_CONTROL = 3;
 
 unsigned int counter = 0;
-
-
 
 byte activeMode = 0;
 
@@ -84,10 +93,10 @@ void sendMidiCC(byte channel, byte controller, byte value)
   midiSerial.write(value & 0x7F);
 
   // Debug message
-  // Serial.print("Sent MIDI CC: ");
-  // Serial.print(controller);
-  // Serial.print(", value: ");
-  // Serial.println(value);
+  Serial.print("Sent MIDI CC: ");
+  Serial.print(controller);
+  Serial.print(", value: ");
+  Serial.println(value);
 }
 
 long mapExpToLFOSpeed(byte expValue)
@@ -121,13 +130,12 @@ void stopLFOs()
 //  —————————————————————————————
 //  Global state and config
 //  —————————————————————————————
-int currentVolume = 0;         // last sent CC value
-
+int currentVolume = 0; // last sent CC value
 
 // hold values in frames
-const int onMinHold = 10;  //
+const int onMinHold = 10;   //
 const int onMaxHold = 6000; //
-const int offMinHold = 1;  //
+const int offMinHold = 1;   //
 const int offMaxHold = 800; //
 const int maxBurst = 20;
 
@@ -153,93 +161,6 @@ void fadeTo(byte outCC, int start, int end, int durationMs)
 //  —————————————————————————————
 //  Call this *every* loop to drive the stutter
 //  —————————————————————————————
-void brokenCable(unsigned long &holdTime, byte &cableState, byte &burstCount, byte outputCC, String cableName)
-{
-  // countdown until next toggle
-  if (holdTime == 0)
-  {
-    
-    if (burstCount > 0) {
-      if (cableState == brokenCableState_BURST_OFF) {
-        cableState = brokenCableState_BURST_ON;
-      } else {
-        cableState = brokenCableState_BURST_OFF;
-      }
-      burstCount--;
-    } else {
-      // Randomly choose between normal ON/OFF (70%) or BURST mode (30%)
-      byte nextState = (random(0, 10) < 3) ? brokenCableState_BURST_ON : brokenCableState_ON;
-      cableState = nextState;
-      
-      if (nextState == brokenCableState_BURST_ON) {
-        burstCount = random(3, maxBurst + 1);
-        holdTime = 5; // Very short hold for first burst transition
-        return;
-      }
-    }
-
-    if (cableState == brokenCableState_ON)
-    {
-      // → entering "ON" state
-      // Generate a value from 0.0 to 1.0, square it to bias toward smaller values
-      // This makes small values much more likely than large ones
-      float randomBias = random(0, 10000) / 10000.0;
-      randomBias = randomBias * randomBias * randomBias; // Square it to make small values more likely
-      
-      // Apply the bias to the range
-      int range = (onMaxHold - onMinHold) / (targetVolume+1);
-      holdTime = onMinHold + (int)(randomBias * range);
-      
-      // choose a slightly random on-level (40–100% of target)
-      // fade in over ~50ms
-      fadeTo(outputCC, currentVolume, 127, 50);
-    }
-    if (cableState == brokenCableState_OFF)
-    {
-      // → entering "OFF" state
-      // Also apply nonlinear distribution to OFF state
-      float randomBias = random(0, 10000) / 10000.0;
-      randomBias = randomBias * randomBias * randomBias;
-      int range = (offMaxHold - offMinHold) / (targetVolume+1);
-      holdTime = offMinHold + (int)(randomBias * range);
-      
-      Serial.print("Broken " + cableName + " hold OFF: ");
-      Serial.println(holdTime);
-      // quick fade‐out over ~20ms
-      fadeTo(outputCC, currentVolume, 0, 20);
-      currentVolume = 0;
-    }
-    else 
-    {
-      holdTime = random(10, 100); // Ensure we never get holdTime=0 which would cause instant retrigger
-      if (cableState == brokenCableState_BURST_ON) {
-        // Burst ON state - send full volume
-        fadeTo(outputCC, currentVolume, 127, 20);
-        currentVolume = 127;
-      } else {
-        // Burst OFF state - send zero volume
-        fadeTo(outputCC, currentVolume, 0, 20);
-        currentVolume = 0;
-      }
-    }
-  } else {
-    if (holdTime > onMaxHold) {
-      holdTime = 0;
-    } else {
-      holdTime--;
-    }
-  }
-}
-
-void brokenCableA()
-{
-  brokenCable(brokenCableHold_A, brokenCableState_A, burstCount_A, OUT_CC_A_VOLUME, "A");
-}
-
-void brokenCableB()
-{
-  brokenCable(brokenCableHold_B, brokenCableState_B, burstCount_B, OUT_CC_B_VOLUME, "B");
-}
 
 void setup()
 {
@@ -281,116 +202,84 @@ void loop()
   if (midiSerial.available() > 0)
   {
     byte data = midiSerial.read();
-
-    // Log the raw data
-    Serial.print("MIDI data: ");
-    Serial.print(data);
-    Serial.print(" (0x");
-    Serial.print(data, HEX);
-    Serial.println(")");
-
-    bool modeSwitched = false;
-
-    // Handle each control based on the direct byte value
-    if (data == IN_CC_SWITCH_1)
+    Serial.print(nextExpectedByte);
+    Serial.print(" ");
+    Serial.println(data);
+    if (nextExpectedByte == BYTE_STATUS || data == IN_STATUS_BYTE)
     {
-      Serial.println("Switch 1 activated");
-      modeSwitched = checkModeSwitch(MODE_BROKEN_CABLE);
-      activeMode = MODE_BROKEN_CABLE;
+      nextExpectedByte = BYTE_CC;
     }
-    else if (data == IN_CC_SWITCH_2)
+    else if (nextExpectedByte == BYTE_CC)
     {
-      Serial.println("Switch 2 activated");
-      modeSwitched = checkModeSwitch(MODE_AB_CONTROL);
-      activeMode = MODE_AB_CONTROL;
+      currentCC = data;
+      nextExpectedByte = BYTE_VALUE;
     }
-    else if (data == IN_CC_SWITCH_3)
+    else if (nextExpectedByte == BYTE_VALUE)
     {
-      Serial.println("Switch 3 activated");
-      modeSwitched = checkModeSwitch(MODE_RAMP_LFO);
-      activeMode = MODE_RAMP_LFO;
-    }
-    else if (data == IN_CC_SWITCH_4)
-    {
-      Serial.println("Switch 4 activated");
-      modeSwitched = checkModeSwitch(MODE_VOLUME_CONTROL);
-      activeMode = MODE_VOLUME_CONTROL;
-    }
-    Serial.println("Note on: " + String(noteOn));
-    Serial.println("Mode switched: " + String(modeSwitched));
-    if (!noteOn || modeSwitched)
-    {
-      if (!noteOn)
+      if (currentCC == IN_CC_EXP)
       {
-        Serial.println("Mode stopped");
-        digitalWrite(ledPin, LOW);
-      }
-      else
-      {
-        Serial.println("Mode switched");
-      }
-      stopLFOs();
-      sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
-      brokenCableHold_A =0;
-      brokenCableHold_B = 0;
-    }
-    if (noteOn)
-    {
-      digitalWrite(ledPin, HIGH);
-    }
-    // Check for expression pedal - seems to work differently, might need a delay
-    if (data == IN_CC_EXP)
-    {
-      // Wait for the value byte to be available
-      delay(5); // Short delay to ensure the next byte arrives
-      if (midiSerial.available() > 0)
-      {
-        byte value = midiSerial.read();
-        // Map from pedal range (31-127) to full MIDI range (0-127)
-        targetVolume = 127 - mapRange(value, 31, 127, 0, 127);
-        Serial.print("Expression pedal value: ");
-        Serial.println(targetVolume);
-      }
-    }
-  }
-
-  // Handle active modes and other logic
-  if (activeMode == MODE_VOLUME_CONTROL)
-  {
-    sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, targetVolume);
-  }
-  if (noteOn)
-  {
-    if (activeMode == MODE_AB_CONTROL)
-    {
-      sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, targetVolume);
-      // 121 - due to the way the pedal is limited
-      if (targetVolume > 121) {
-        targetVolume = 121;
-      }
-      sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 121 - targetVolume);
-    }
-    if (activeMode == MODE_BROKEN_CABLE)
-    {
-      brokenCableA();
-      brokenCableB();
-    }
-    else if (activeMode == MODE_RAMP_LFO)
-    {
-      sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
-      if (!lfoActive)
-      {
-        startRampLFO();
-      }
-      else
-      {
-        if (lastVolume != targetVolume)
+        if (data <= 127)
         {
-          sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
-          lastVolume = targetVolume;
+          Serial.print("--EXP: ");
+          Serial.println(data);
         }
       }
+      nextExpectedByte = BYTE_STATUS;
     }
-    
   }
+
+  // // Log the raw data
+  // // Serial.print("MIDI data: ");
+  // // Serial.print(data);
+  // // Serial.print(" (0x");
+  // // Serial.print(data, HEX);
+  // // Serial.println(")");
+
+  // bool modeSwitched = false;
+
+  // // Handle each control based on the direct byte value
+  // if (data == IN_CC_SWITCH_1)
+  // {
+  //   Serial.println("Switch 1 activated");
+  //   modeSwitched = checkModeSwitch(MODE_BROKEN_CABLE);
+  //   activeMode = MODE_BROKEN_CABLE;
+  // }
+  // else if (data == IN_CC_SWITCH_2)
+  // {
+  //   Serial.println("Switch 2 activated");
+  //   modeSwitched = checkModeSwitch(MODE_AB_CONTROL);
+  //   activeMode = MODE_AB_CONTROL;
+  // }
+  // else if (data == IN_CC_SWITCH_3)
+  // {
+  //   Serial.println("Switch 3 activated");
+  //   modeSwitched = checkModeSwitch(MODE_RAMP_LFO);
+  //   activeMode = MODE_RAMP_LFO;
+  // }
+  // else if (data == IN_CC_SWITCH_4)
+  // {
+  //   Serial.println("Switch 4 activated");
+  //   modeSwitched = checkModeSwitch(MODE_VOLUME_CONTROL);
+  //   activeMode = MODE_VOLUME_CONTROL;
+  // }
+  // // Serial.println("Note on: " + String(noteOn));
+  // // Serial.println("Mode switched: " + String(modeSwitched));
+  // // Check for expression pedal - seems to work differently, might need a delay
+  // if (data == IN_CC_EXP)
+  // {
+  //   // Wait for the value byte to be available
+  //   if (midiSerial.available() > 0)
+  //   {
+  //     byte value = midiSerial.read();
+  //     targetVolume = value;
+  //     Serial.println(targetVolume);
+  //   }
+  // }
+  // }
+
+  // Send exp value to volume control
+  // if (lastVolume != targetVolume) {
+  //   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, targetVolume);
+  //   lastVolume = targetVolume;
+  // }
 }
