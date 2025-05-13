@@ -55,6 +55,17 @@ const byte MODE_VOLUME_CONTROL = 4;
 
 byte activeMode = MODE_VOLUME_CONTROL;
 
+
+// broken cable variables
+
+int timeToNextBurst = 0;
+int lastBurstTime = 0;
+int burstCount = 0;
+byte burstState = 0;
+
+const byte BURST_FRAMES = 10;
+
+
 // Function to map one range to another
 long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
 {
@@ -94,6 +105,29 @@ void determineMode()
   }
 }
 
+void doBrokenCable() {
+  int _millis = millis();
+  if (_millis - lastBurstTime > timeToNextBurst) {
+    lastBurstTime = _millis;
+    timeToNextBurst = random(100, 2000);
+    burstCount = random(1, 10);
+  }
+
+  if (burstCount > 0) {
+    Serial.print("burstCount: ");
+    Serial.println(burstCount);
+    if (burstState < BURST_FRAMES) {
+      sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 0);
+      burstState++;
+    } else {
+      sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
+      burstState = 0;
+      burstCount--;
+    }
+  }
+  
+}
+
 void setup()
 {
   // Set up hardware serial for debug output
@@ -118,9 +152,9 @@ void loop()
   if (midiSerial.available() > 0)
   {
     byte data = midiSerial.read();
-    Serial.print(nextExpectedByte);
-    Serial.print(" ");
-    Serial.println(data);
+    // Serial.print(nextExpectedByte);
+    // Serial.print(" ");
+    // Serial.println(data);
     if (nextExpectedByte == BYTE_STATUS || data == IN_STATUS_BYTE)
     {
       nextExpectedByte = BYTE_CC;
@@ -156,7 +190,9 @@ void loop()
     sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, 0);
     sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 127);
   }
-  else
+  else if (activeMode == MODE_BROKEN_CABLE) {
+    doBrokenCable();
+  } else
   {
     sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, currentValue);
   }
