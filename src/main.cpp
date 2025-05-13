@@ -53,7 +53,6 @@ const byte MODE_A_ON_B_OFF = 1;
 const byte MODE_B_ON_A_OFF = 2;
 const byte MODE_VOLUME_CONTROL = 4;
 
-
 byte activeMode = MODE_VOLUME_CONTROL;
 
 // Function to map one range to another
@@ -69,9 +68,31 @@ void sendMidiCC(byte channel, byte controller, byte value)
   midiSerial.write(0xB0 | (channel & 0x0F));
   midiSerial.write(controller & 0x7F);
   midiSerial.write(value & 0x7F);
-
 }
 
+void determineMode()
+{
+  if (currentCC == IN_CC_SWITCH_1 || currentCC == IN_CC_SWITCH_2 || currentCC == IN_CC_SWITCH_3)
+  {
+    if (currentValue == 1)
+    {
+      activeMode = MODE_VOLUME_CONTROL;
+      return;
+    }
+    if (currentCC == IN_CC_SWITCH_1)
+    {
+      activeMode = MODE_A_ON_B_OFF;
+    }
+    else if (currentCC == IN_CC_SWITCH_2)
+    {
+      activeMode = MODE_B_ON_A_OFF;
+    }
+    else if (currentCC == IN_CC_SWITCH_3)
+    {
+      activeMode = MODE_BROKEN_CABLE;
+    }
+  }
+}
 
 void setup()
 {
@@ -112,7 +133,7 @@ void loop()
     else if (nextExpectedByte == BYTE_VALUE)
     {
 
-      if (currentCC == IN_CC_EXP || currentCC == IN_CC_SWITCH_1 || currentCC == IN_CC_SWITCH_2)
+      if (currentCC == IN_CC_EXP || currentCC == IN_CC_SWITCH_1 || currentCC == IN_CC_SWITCH_2 || currentCC == IN_CC_SWITCH_3)
       {
         if (data <= 127)
         {
@@ -122,38 +143,20 @@ void loop()
       nextExpectedByte = BYTE_STATUS;
     }
   }
-
-  if (currentCC == IN_CC_SWITCH_2) {
-    if (currentValue == 0) {
-      activeMode = MODE_B_ON_A_OFF;
-    } else {
-      activeMode = MODE_VOLUME_CONTROL;
-    }
-  } else
-
-  if (currentCC == IN_CC_SWITCH_1)
-  {
-    if (currentValue == 0)
-    {
-      activeMode = MODE_A_ON_B_OFF;
-    }
-    else
-    {
-      activeMode = MODE_VOLUME_CONTROL;
-    }
-  }
+  determineMode();
   if (activeMode == MODE_A_ON_B_OFF)
   {
     Serial.println("A on, B off");
     sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, 127);
     sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 0);
   }
-  else
-  if (activeMode == MODE_B_ON_A_OFF) {
+  else if (activeMode == MODE_B_ON_A_OFF)
+  {
     Serial.println("B on, A off");
     sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, 0);
     sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 127);
-  } else 
+  }
+  else
   {
     sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, currentValue);
   }
