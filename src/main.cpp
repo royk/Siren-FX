@@ -48,16 +48,17 @@ const byte BYTE_VALUE = 2;
 byte nextExpectedByte = BYTE_STATUS;
 
 byte currentCC = 0;
+byte currentValue = 0;
 
 // Modes
 const byte MODE_BROKEN_CABLE = 0;
-const byte MODE_AB_CONTROL = 1;
-const byte MODE_RAMP_LFO = 2;
-const byte MODE_VOLUME_CONTROL = 3;
+const byte MODE_A_ON_B_OFF = 1;
+const byte MODE_B_ON_A_OFF = 2;
+const byte MODE_VOLUME_CONTROL = 4;
 
 unsigned int counter = 0;
 
-byte activeMode = 0;
+byte activeMode = MODE_VOLUME_CONTROL;
 
 byte targetVolume = 127;
 byte lastVolume = 127;
@@ -93,10 +94,10 @@ void sendMidiCC(byte channel, byte controller, byte value)
   midiSerial.write(value & 0x7F);
 
   // Debug message
-  Serial.print("Sent MIDI CC: ");
-  Serial.print(controller);
-  Serial.print(", value: ");
-  Serial.println(value);
+  // Serial.print("Sent MIDI CC: ");
+  // Serial.print(controller);
+  // Serial.print(", value: ");
+  // Serial.println(value);
 }
 
 long mapExpToLFOSpeed(byte expValue)
@@ -216,70 +217,50 @@ void loop()
     }
     else if (nextExpectedByte == BYTE_VALUE)
     {
-      if (currentCC == IN_CC_EXP)
+
+      if (currentCC == IN_CC_EXP || currentCC == IN_CC_SWITCH_1 || currentCC == IN_CC_SWITCH_2)
       {
         if (data <= 127)
         {
-          Serial.print("--EXP: ");
-          Serial.println(data);
+          currentValue = data;
         }
       }
       nextExpectedByte = BYTE_STATUS;
     }
   }
 
-  // // Log the raw data
-  // // Serial.print("MIDI data: ");
-  // // Serial.print(data);
-  // // Serial.print(" (0x");
-  // // Serial.print(data, HEX);
-  // // Serial.println(")");
+  if (currentCC == IN_CC_SWITCH_2) {
+    if (currentValue == 0) {
+      activeMode = MODE_B_ON_A_OFF;
+    } else {
+      activeMode = MODE_VOLUME_CONTROL;
+    }
+  } else
 
-  // bool modeSwitched = false;
-
-  // // Handle each control based on the direct byte value
-  // if (data == IN_CC_SWITCH_1)
-  // {
-  //   Serial.println("Switch 1 activated");
-  //   modeSwitched = checkModeSwitch(MODE_BROKEN_CABLE);
-  //   activeMode = MODE_BROKEN_CABLE;
-  // }
-  // else if (data == IN_CC_SWITCH_2)
-  // {
-  //   Serial.println("Switch 2 activated");
-  //   modeSwitched = checkModeSwitch(MODE_AB_CONTROL);
-  //   activeMode = MODE_AB_CONTROL;
-  // }
-  // else if (data == IN_CC_SWITCH_3)
-  // {
-  //   Serial.println("Switch 3 activated");
-  //   modeSwitched = checkModeSwitch(MODE_RAMP_LFO);
-  //   activeMode = MODE_RAMP_LFO;
-  // }
-  // else if (data == IN_CC_SWITCH_4)
-  // {
-  //   Serial.println("Switch 4 activated");
-  //   modeSwitched = checkModeSwitch(MODE_VOLUME_CONTROL);
-  //   activeMode = MODE_VOLUME_CONTROL;
-  // }
-  // // Serial.println("Note on: " + String(noteOn));
-  // // Serial.println("Mode switched: " + String(modeSwitched));
-  // // Check for expression pedal - seems to work differently, might need a delay
-  // if (data == IN_CC_EXP)
-  // {
-  //   // Wait for the value byte to be available
-  //   if (midiSerial.available() > 0)
-  //   {
-  //     byte value = midiSerial.read();
-  //     targetVolume = value;
-  //     Serial.println(targetVolume);
-  //   }
-  // }
-  // }
-
-  // Send exp value to volume control
-  // if (lastVolume != targetVolume) {
-  //   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, targetVolume);
-  //   lastVolume = targetVolume;
-  // }
+  if (currentCC == IN_CC_SWITCH_1)
+  {
+    if (currentValue == 0)
+    {
+      activeMode = MODE_A_ON_B_OFF;
+    }
+    else
+    {
+      activeMode = MODE_VOLUME_CONTROL;
+    }
+  }
+  if (activeMode == MODE_A_ON_B_OFF)
+  {
+    Serial.println("A on, B off");
+    sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, 127);
+    sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 0);
+  }
+  else
+  if (activeMode == MODE_B_ON_A_OFF) {
+    Serial.println("B on, A off");
+    sendMidiCC(OUT_CHANNEL, OUT_CC_A_VOLUME, 0);
+    sendMidiCC(OUT_CHANNEL, OUT_CC_B_VOLUME, 127);
+  } else 
+  {
+    sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, currentValue);
+  }
 }
