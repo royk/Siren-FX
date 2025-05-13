@@ -27,9 +27,6 @@ const byte OUT_CC_AB_LFO_SINE = 61;  // 0-127: depth
 const byte OUT_CC_AB_LFO_RAMP = 65;
 const byte OUT_CC_B_LFO_DELAY = 51; // 0-24 (1/24th of a duration)
 
-const byte LFO_MIN_SPEED = 10;
-const byte LFO_MAX_SPEED = 127;
-
 byte OUT_CHANNEL = 0; // MIDI channel for LFO output (0-15)
 
 // In CC codes
@@ -56,28 +53,8 @@ const byte MODE_A_ON_B_OFF = 1;
 const byte MODE_B_ON_A_OFF = 2;
 const byte MODE_VOLUME_CONTROL = 4;
 
-unsigned int counter = 0;
 
 byte activeMode = MODE_VOLUME_CONTROL;
-
-byte targetVolume = 127;
-byte lastVolume = 127;
-
-bool lfoActive = false;
-
-unsigned long brokenCableHold_A = 100;
-unsigned long brokenCableHold_B = 100;
-
-const byte brokenCableState_OFF = 0;
-const byte brokenCableState_ON = 1;
-const byte brokenCableState_BURST_ON = 2;
-const byte brokenCableState_BURST_OFF = 3;
-
-byte brokenCableState_A = brokenCableState_OFF;
-byte brokenCableState_B = brokenCableState_OFF;
-
-byte burstCount_A = 0;
-byte burstCount_B = 0;
 
 // Function to map one range to another
 long mapRange(long x, long in_min, long in_max, long out_min, long out_max)
@@ -93,75 +70,8 @@ void sendMidiCC(byte channel, byte controller, byte value)
   midiSerial.write(controller & 0x7F);
   midiSerial.write(value & 0x7F);
 
-  // Debug message
-  // Serial.print("Sent MIDI CC: ");
-  // Serial.print(controller);
-  // Serial.print(", value: ");
-  // Serial.println(value);
 }
 
-long mapExpToLFOSpeed(byte expValue)
-{
-  return mapRange(expValue, 0, 127, LFO_MIN_SPEED, LFO_MAX_SPEED);
-}
-
-void startSineLFO()
-{
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SINE, 127);
-  sendMidiCC(OUT_CHANNEL, OUT_CC_B_LFO_DELAY, 12);
-  lfoActive = true;
-}
-
-void startRampLFO()
-{
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, mapExpToLFOSpeed(targetVolume));
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 127);
-  sendMidiCC(OUT_CHANNEL, OUT_CC_B_LFO_DELAY, 12);
-  lfoActive = true;
-}
-
-void stopLFOs()
-{
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_SPEED, 0);
-  sendMidiCC(OUT_CHANNEL, OUT_CC_AB_LFO_RAMP, 0);
-  lfoActive = false;
-}
-
-//  —————————————————————————————
-//  Global state and config
-//  —————————————————————————————
-int currentVolume = 0; // last sent CC value
-
-// hold values in frames
-const int onMinHold = 10;   //
-const int onMaxHold = 6000; //
-const int offMinHold = 1;   //
-const int offMaxHold = 800; //
-const int maxBurst = 20;
-
-//  —————————————————————————————
-//  Smoothly ramp CC from start→end over durationMs
-//  —————————————————————————————
-void fadeTo(byte outCC, int start, int end, int durationMs)
-{
-  // int steps = abs(end - start);
-  // if (steps == 0)
-  //   return;
-  // int delayPerStep = durationMs / steps;
-  // int dir = (end > start) ? 1 : -1;
-  // for (int v = start; v != end; v += dir)
-  // {
-  //   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, v);
-  //   delay(delayPerStep);
-  // }
-  // sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, end);
-  sendMidiCC(OUT_CHANNEL, outCC, end);
-}
-
-//  —————————————————————————————
-//  Call this *every* loop to drive the stutter
-//  —————————————————————————————
 
 void setup()
 {
@@ -176,25 +86,9 @@ void setup()
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
 
-  stopLFOs();
   sendMidiCC(OUT_CHANNEL, OUT_CC_AB_VOLUME, 127);
 
   Serial.println("Waiting for MIDI data...");
-}
-
-bool checkModeSwitch(byte mode)
-{
-  bool modeSwitched = false;
-  if (noteOn && activeMode == mode)
-  {
-    noteOn = false;
-  }
-  else
-  {
-    noteOn = true;
-    modeSwitched = true;
-  }
-  return modeSwitched;
 }
 
 void loop()
